@@ -206,11 +206,15 @@ def extract_summaries(assembly_id, bill_id):
     except IOError as e:
         return None
 
-def extract_proposers(assembly_id, bill_id):
+def extract_proposers_or_supporters(assembly_id, bill_id, is_proposers):
     #TODO: 찬성의원 목록에 의원 이름이 있는 경우가 있는자 확인
     fn = '%s/%s/%s.html' % (DIR['proposers'], assembly_id, bill_id)
     page = utils.read_webpage(fn)
-    elems = utils.get_elems(page, X['proposers'])
+
+    # There are 2 3-depth table in this page. 1st: proposer, 2nd: supporters
+    depth_three_tables = page.xpath('//table//table//table')
+
+    elems = depth_three_tables[0 if is_proposers else 1].xpath(X['proposers'])
     if assembly_id < 19:
         return elems
     else:
@@ -234,7 +238,8 @@ def parse_page(assembly_id, bill_id, meta, directory):
     fn = '%s/%s.json' % (directory, bill_id)
 
     d = extract_specifics(assembly_id, bill_id, meta)
-    d['proposers']      = extract_proposers(assembly_id, bill_id)
+    d['proposers']      = extract_proposers_or_supporters(assembly_id, bill_id, true)
+    d['supporters']     = extract_proposers_or_supporters(assembly_id, bill_id, false)
     d['summaries']      = extract_summaries(assembly_id, bill_id)
     d['withdrawers']    = extract_withdrawers(assembly_id, bill_id)
     d['proposed_date']  = include(meta, bill_id, 'proposed_date')
