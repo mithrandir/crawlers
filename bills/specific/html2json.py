@@ -161,6 +161,50 @@ def extract_specifics(assembly_id, bill_id, meta):
             rows.append(dict(zip(headers, columns)))
         return rows
 
+    def extract_extra_info(meta, c):
+        extra_infos = dict()
+        current_category = None
+        for node in r:
+            if node.tag == 'span' and node.get('class') == 'text11':
+                current_category = node.text.strip()
+                current_category = '대안반영폐기 의안목록' if current_category.startswith('대안반영폐기 의안목록') else current_category
+                continue
+
+            if current_category == None:
+                continue
+
+            extra_infos[current_category] = extra_infos[current_category] if extra_infos.has_key(current_category) else []
+            content = None
+            if current_category == '비고':
+                content = extract_remark(node)
+            elif current_category == '대안':
+                content = extract_bill_id_from_link(meta, node)
+            elif current_category == '대안반영폐기 의안목록':
+                content = extract_bill_id_from_link(meta, node)
+            else:
+                content = lxml.html.tostring(node)
+
+            if content:
+                extra_infos[current_category].append(content)
+        return extra_infos
+
+    def extract_remark(c):
+        try:
+            if c.tag == 'br':
+                return c.tail.strip()
+            else:
+                return c.text.strip()
+        except AttributeError:
+            return None
+
+    def extract_bill_id_from_link(meta, c):
+        # Assume this is <a> tag
+        href = c.get('href')
+        match = re.match('/bill/jsp/BillDetail.jsp\?bill_id=(.*)', href)
+        if match:
+            return meta.query('link_id == @match.group(1)')['bill_id'].values[0]
+        return None
+
     fn          = '%s/%d/%s.html' % (DIR['specifics'], assembly_id, bill_id)
     page        = utils.read_webpage(fn)
     table       = utils.get_elems(page, X['spec_table'])[1]
@@ -186,9 +230,7 @@ def extract_specifics(assembly_id, bill_id, meta):
         if row_titles[i]!='부가정보':
             status_dict[row_titles[i]] = extract_row_contents(r)
         else:
-            t = r.xpath('span[@class="text8"]/text()')
-            c = filter(None, (t.strip() for t in r.xpath('text()')))
-            status_dict[row_titles[i]] = dict(zip(t, c))
+            status_dict[row_titles[i]] = extract_extra_info(meta, r)
 
     headers = ['assembly_id', 'bill_id', 'title', 'status_detail', 'statuses', 'status_infos', 'status_dict']
     specifics = [assembly_id, bill_id, title, status_detail, statuses, status_infos, status_dict]
